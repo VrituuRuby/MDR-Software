@@ -1,6 +1,6 @@
 import { Text, Ticker } from "pixi.js";
 import { lerp } from "./common";
-import { globalMousePosition } from "./mdr-app";
+import { globalMousePosition, isDragging } from "./mdr-app";
 
 export class MDRNumber extends Text {
   value: number;
@@ -12,13 +12,16 @@ export class MDRNumber extends Text {
   private direction: "x" | "y" | "none";
   private speed: number;
   private elapsed: number = 0;
+  private distance = Math.random() * 10 + 5;
+  private fadeDelay: number;
 
   constructor(value: number, x: number, y: number) {
     super({
       text: value.toString(),
-      style: { fontSize: 48, fill: 0x8fb7d7 },
+      style: { fontSize: 48, fill: 0x8fb7d7, fontFamily: "Lato" },
     });
 
+    this.alpha = 0;
     this.value = value;
     this.baseX = x;
     this.baseY = y;
@@ -29,12 +32,19 @@ export class MDRNumber extends Text {
     this.direction = this.randomizeDirection();
     this.speed = this.randomizeSpeed();
     this.anchor.set(0.5);
-    Ticker.shared.add(this.float, this);
+    this.fadeDelay = Math.random() * 4;
 
     this.eventMode = "static";
     this.cursor = "pointer";
 
     this.on("pointerdown", this.onClick);
+    this.on("pointerover", this.onMouseHover);
+
+    Ticker.shared.add(this.update, this);
+  }
+
+  private onMouseHover() {
+    isDragging ? this.onClick() : null;
   }
 
   private onClick() {
@@ -51,12 +61,24 @@ export class MDRNumber extends Text {
 
   private randomizeDirection(): "none" | "x" | "y" {
     const random = Math.random();
-    if (random < 0.7) {
+    if (random < 0.5) {
       return "none";
-    } else if (random < 0.85) {
+    } else if (random < 0.75) {
       return "x";
     } else {
       return "y";
+    }
+  }
+
+  private update(ticker: Ticker) {
+    this.fadeIn(ticker.deltaTime);
+    this.float(ticker);
+    this.updateScale();
+  }
+
+  private fadeIn(deltaTime: number) {
+    if (this.elapsed >= this.fadeDelay) {
+      this.alpha = lerp(this.alpha, 1, deltaTime * 0.1);
     }
   }
 
@@ -64,47 +86,28 @@ export class MDRNumber extends Text {
     const deltaTime = ticker.deltaTime;
     this.elapsed += deltaTime * this.speed;
 
-    const DISTANCE = 12;
-    const EPSILON = 0.1;
-
     if (this.direction === "x") {
       const offsetX = Math.cos(this.elapsed);
-      if (Math.abs(offsetX) < EPSILON) {
-        const random = Math.random();
-        if (random < 0.1) {
-          this.direction = "y";
-          this.elapsed += Math.PI / 2;
-        }
-      } else {
-        this.desiredX = this.baseX + offsetX * DISTANCE;
-      }
+      this.desiredX = this.baseX + offsetX * this.distance;
     } else if (this.direction === "y") {
       const offsetY = Math.sin(this.elapsed);
-      if (Math.abs(offsetY) < EPSILON) {
-        const random = Math.random();
-        if (random < 0.1) {
-          this.direction = "x";
-          this.elapsed += Math.PI / 2;
-        }
-      } else {
-        this.desiredY = this.baseY + offsetY * DISTANCE;
-      }
+      this.desiredY = this.baseY + offsetY * this.distance;
     }
 
-    this.x = lerp(this.x, this.desiredX, 0.1);
-    this.y = lerp(this.y, this.desiredY, 0.1);
-    this.updateScale(deltaTime);
+    this.x = lerp(this.x, this.desiredX, 0.1 * deltaTime);
+    this.y = lerp(this.y, this.desiredY, 0.1 * deltaTime);
+    this.updateScale();
   };
 
-  private updateScale(deltaTime: number) {
+  private updateScale() {
     if (this.isSelected) return;
     const distance = Math.hypot(
-      this.x - globalMousePosition.x,
-      this.y - globalMousePosition.y
+      this.baseX - globalMousePosition.x,
+      this.baseY - globalMousePosition.y
     );
 
-    const MAX_DISTANCE = 200;
-    const MAX_SCALE = 1.2;
+    const MAX_DISTANCE = 100;
+    const MAX_SCALE = 1.5;
     const MIN_SCALE = 0.8;
 
     const scaleFactor =
